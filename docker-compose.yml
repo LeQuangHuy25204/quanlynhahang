@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------
+  # Service 1: MySQL 8.0 Database
+  # -------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: bbq_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: quanlynhahang
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./quanlynhahang.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # -------------------------------------------------------
+  # Service 2: Node.js Backend
+  # -------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bbq_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: quanlynhahang
+      DB_CONNECTION_LIMIT: 10
+      JWT_SECRET: change_this_super_secret_key_in_production_min_32_chars
+      JWT_EXPIRES_IN: 8h
+      BCRYPT_SALT_ROUNDS: 12
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  db_data:
+    driver: local
