@@ -211,6 +211,7 @@ CREATE TABLE `session` (
   `SessionToken` varchar(255) NOT NULL,
   `JoinCode` varchar(20) NOT NULL,
   `Status` tinyint(4) NOT NULL,
+  `GuestCount` int(11) NOT NULL DEFAULT 2,
   `StartTime` datetime NOT NULL DEFAULT current_timestamp(),
   `EndTime` datetime DEFAULT NULL,
   `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
