@@ -56,7 +56,9 @@ CREATE TABLE `category` (
 
 CREATE TABLE `invoice` (
   `InvoiceID` bigint(20) NOT NULL AUTO_INCREMENT,
-  `PaymentID` bigint(20) NOT NULL,
+  `SessionID` bigint(20) NOT NULL,
+  `BranchID` bigint(20) NOT NULL,
+  `PromotionID` bigint(20) DEFAULT NULL COMMENT 'Mã KM áp dụng toàn bill',
   `InvoiceNumber` varchar(50) NOT NULL,
   `InvoiceDate` datetime NOT NULL DEFAULT current_timestamp(),
   `SubTotal` decimal(18,2) NOT NULL,
@@ -66,8 +68,9 @@ CREATE TABLE `invoice` (
   `TotalAmount` decimal(18,2) NOT NULL,
   `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`InvoiceID`),
-  UNIQUE KEY `UQ_Invoice_PaymentID` (`PaymentID`),
-  UNIQUE KEY `UQ_Invoice_InvoiceNumber` (`InvoiceNumber`)
+  UNIQUE KEY `UQ_Invoice_SessionID` (`SessionID`),
+  UNIQUE KEY `UQ_Invoice_InvoiceNumber` (`InvoiceNumber`),
+  KEY `FK_Invoice_Promotion` (`PromotionID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `menuitem` (
@@ -106,8 +109,10 @@ CREATE TABLE `orderline` (
   `OrderLineID` bigint(20) NOT NULL AUTO_INCREMENT,
   `OrderID` bigint(20) NOT NULL,
   `MenuItemID` bigint(20) NOT NULL,
+  `PromotionID` bigint(20) DEFAULT NULL COMMENT 'Mã KM áp dụng cho riêng món này',
   `Quantity` decimal(10,3) NOT NULL,
   `UnitPrice` decimal(18,2) NOT NULL,
+  `LineTotal` decimal(18,2) NOT NULL,
   `DiscountApplied` decimal(18,2) NOT NULL DEFAULT 0.00,
   `Note` varchar(500) DEFAULT NULL,
   `Status` tinyint(4) NOT NULL,
@@ -119,12 +124,13 @@ CREATE TABLE `orderline` (
   PRIMARY KEY (`OrderLineID`),
   KEY `FK_OrderLine_CancelledStaff` (`CancelledBy`),
   KEY `FK_OrderLine_MenuItem` (`MenuItemID`),
-  KEY `FK_OrderLine_Order` (`OrderID`)
+  KEY `FK_OrderLine_Order` (`OrderID`),
+  KEY `FK_OrderLine_Promotion` (`PromotionID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `payment` (
   `PaymentID` bigint(20) NOT NULL AUTO_INCREMENT,
-  `OrderID` bigint(20) NOT NULL,
+  `InvoiceID` bigint(20) NOT NULL,
   `Amount` decimal(18,2) NOT NULL,
   `PaymentMethod` varchar(50) NOT NULL,
   `Status` tinyint(4) NOT NULL,
@@ -133,7 +139,19 @@ CREATE TABLE `payment` (
   `Note` varchar(500) DEFAULT NULL,
   `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`PaymentID`),
-  KEY `FK_Payment_Order` (`OrderID`)
+  UNIQUE KEY `UQ_Payment_InvoiceID` (`InvoiceID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `invoiceline` (
+  `InvoiceLineID` bigint(20) NOT NULL AUTO_INCREMENT,
+  `InvoiceID` bigint(20) NOT NULL,
+  `OrderLineID` bigint(20) NOT NULL,
+  `ItemNameSnapshot` varchar(255) NOT NULL,
+  `Quantity` decimal(10,3) NOT NULL,
+  `UnitPrice` decimal(18,2) NOT NULL,
+  `Amount` decimal(18,2) NOT NULL,
+  PRIMARY KEY (`InvoiceLineID`),
+  UNIQUE KEY `UQ_InvoiceLine` (`InvoiceID`,`OrderLineID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `promotion` (
@@ -141,8 +159,12 @@ CREATE TABLE `promotion` (
   `RestaurantID` bigint(20) NOT NULL,
   `Name` varchar(255) NOT NULL,
   `Description` varchar(500) DEFAULT NULL,
+  `ApplyLevel` ENUM('INVOICE', 'MENU_ITEM') NOT NULL DEFAULT 'INVOICE' COMMENT 'Phạm vi áp dụng',
   `DiscountType` varchar(20) NOT NULL,
   `DiscountValue` decimal(18,2) NOT NULL,
+  `MaxUsage` int(11) DEFAULT NULL COMMENT 'Tổng lượt dùng cho phép',
+  `UsedCount` int(11) NOT NULL DEFAULT 0 COMMENT 'Số lượt đã dùng',
+  `Version` int(11) NOT NULL DEFAULT 1 COMMENT 'Optimistic Locking',
   `StartDate` datetime NOT NULL,
   `EndDate` datetime DEFAULT NULL,
   `IsActive` tinyint(4) NOT NULL DEFAULT 1,
@@ -150,6 +172,13 @@ CREATE TABLE `promotion` (
   `UpdatedAt` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`PromotionID`),
   KEY `FK_Promotion_Restaurant` (`RestaurantID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `promotion_menuitem` (
+  `PromotionID` bigint(20) NOT NULL,
+  `MenuItemID` bigint(20) NOT NULL,
+  PRIMARY KEY (`PromotionID`, `MenuItemID`),
+  KEY `FK_PromoMap_Item` (`MenuItemID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `restaurant` (
@@ -242,7 +271,12 @@ ALTER TABLE `branchmenuoverride`
 ALTER TABLE `category`
   ADD CONSTRAINT `FK_Category_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`);
 ALTER TABLE `invoice`
-  ADD CONSTRAINT `FK_Invoice_Payment` FOREIGN KEY (`PaymentID`) REFERENCES `payment` (`PaymentID`);
+  ADD CONSTRAINT `FK_Invoice_Branch` FOREIGN KEY (`BranchID`) REFERENCES `branch` (`BranchID`),
+  ADD CONSTRAINT `FK_Invoice_Promotion` FOREIGN KEY (`PromotionID`) REFERENCES `promotion` (`PromotionID`),
+  ADD CONSTRAINT `FK_Invoice_Session` FOREIGN KEY (`SessionID`) REFERENCES `session` (`SessionID`);
+ALTER TABLE `invoiceline`
+  ADD CONSTRAINT `FK_InvoiceLine_Invoice` FOREIGN KEY (`InvoiceID`) REFERENCES `invoice` (`InvoiceID`),
+  ADD CONSTRAINT `FK_InvoiceLine_OrderLine` FOREIGN KEY (`OrderLineID`) REFERENCES `orderline` (`OrderLineID`);
 ALTER TABLE `menuitem`
   ADD CONSTRAINT `FK_MenuItem_Category` FOREIGN KEY (`CategoryID`) REFERENCES `category` (`CategoryID`),
   ADD CONSTRAINT `FK_MenuItem_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`);
@@ -253,11 +287,15 @@ ALTER TABLE `order`
 ALTER TABLE `orderline`
   ADD CONSTRAINT `FK_OrderLine_CancelledStaff` FOREIGN KEY (`CancelledBy`) REFERENCES `staff` (`StaffID`),
   ADD CONSTRAINT `FK_OrderLine_MenuItem` FOREIGN KEY (`MenuItemID`) REFERENCES `menuitem` (`MenuItemID`),
-  ADD CONSTRAINT `FK_OrderLine_Order` FOREIGN KEY (`OrderID`) REFERENCES `order` (`OrderID`);
+  ADD CONSTRAINT `FK_OrderLine_Order` FOREIGN KEY (`OrderID`) REFERENCES `order` (`OrderID`),
+  ADD CONSTRAINT `FK_OrderLine_Promotion` FOREIGN KEY (`PromotionID`) REFERENCES `promotion` (`PromotionID`);
 ALTER TABLE `payment`
-  ADD CONSTRAINT `FK_Payment_Order` FOREIGN KEY (`OrderID`) REFERENCES `order` (`OrderID`);
+  ADD CONSTRAINT `FK_Payment_Invoice` FOREIGN KEY (`InvoiceID`) REFERENCES `invoice` (`InvoiceID`);
 ALTER TABLE `promotion`
   ADD CONSTRAINT `FK_Promotion_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`);
+ALTER TABLE `promotion_menuitem`
+  ADD CONSTRAINT `FK_PromoMap_Promo` FOREIGN KEY (`PromotionID`) REFERENCES `promotion` (`PromotionID`) ON DELETE CASCADE,
+  ADD CONSTRAINT `FK_PromoMap_Item` FOREIGN KEY (`MenuItemID`) REFERENCES `menuitem` (`MenuItemID`) ON DELETE CASCADE;
 ALTER TABLE `session`
   ADD CONSTRAINT `FK_Session_Table` FOREIGN KEY (`TableID`) REFERENCES `table` (`TableID`);
 ALTER TABLE `sessionparticipant`
@@ -315,5 +353,5 @@ INSERT INTO `table` (`TableID`, `AreaID`, `Name`, `QRCode`, `IsActive`) VALUES
 (3, 2, 'Bàn VIP-01', 'table_qr_3', 1),
 (4, 3, 'Bàn V-01', 'table_qr_4', 1);
 
-INSERT INTO `promotion` (`PromotionID`, `RestaurantID`, `Name`, `Description`, `DiscountType`, `DiscountValue`, `StartDate`, `EndDate`, `IsActive`) VALUES
-(1, 1, 'Khai trương giảm 10%', 'Giảm trực tiếp 10% tổng bill', 'PERCENT', 10.00, '2020-01-01 00:00:00', '2030-12-31 23:59:59', 1);
+INSERT INTO `promotion` (`PromotionID`, `RestaurantID`, `Name`, `Description`, `ApplyLevel`, `DiscountType`, `DiscountValue`, `StartDate`, `EndDate`, `IsActive`) VALUES
+(1, 1, 'Khai trương giảm 10%', 'Giảm trực tiếp 10% tổng bill', 'INVOICE', 'PERCENT', 10.00, '2020-01-01 00:00:00', '2030-12-31 23:59:59', 1);

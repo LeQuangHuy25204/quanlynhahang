@@ -30,7 +30,7 @@ services:
   # -------------------------------------------------------
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: bbq_backend
     restart: unless-stopped
@@ -52,7 +52,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/node_modules
 
 volumes:
