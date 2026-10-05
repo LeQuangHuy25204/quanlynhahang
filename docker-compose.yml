@@ -9,7 +9,7 @@ services:
     container_name: bbq_db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: quanlynhahang
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
@@ -19,7 +19,7 @@ services:
       - ./quanlynhahang.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - ./my.cnf:/etc/mysql/conf.d/my.cnf:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,7 +42,7 @@ services:
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: rootpassword
+      DB_PASSWORD: root
       DB_NAME: quanlynhahang
       DB_CONNECTION_LIMIT: 10
       JWT_SECRET: change_this_super_secret_key_in_production_min_32_chars
@@ -54,6 +54,27 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+
+  # -------------------------------------------------------
+  # Service 3: React Frontend (Nginx)
+  # -------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: bbq_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:3000/api
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
 
 volumes:
   db_data:
