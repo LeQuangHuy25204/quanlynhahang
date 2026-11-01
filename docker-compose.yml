@@ -48,6 +48,7 @@ services:
       JWT_SECRET: change_this_super_secret_key_in_production_min_32_chars
       JWT_EXPIRES_IN: 8h
       BCRYPT_SALT_ROUNDS: 12
+      RESTAURANT_ID: 1
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +63,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: build
     container_name: bbq_frontend
     restart: unless-stopped
     ports:

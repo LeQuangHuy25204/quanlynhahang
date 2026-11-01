@@ -76,6 +76,7 @@ CREATE TABLE `invoice` (
 CREATE TABLE `menuitem` (
   `MenuItemID` bigint(20) NOT NULL AUTO_INCREMENT,
   `RestaurantID` bigint(20) NOT NULL,
+  `BranchID` bigint(20) DEFAULT NULL COMMENT 'NULL: món toàn chuỗi, NOT NULL: món riêng chi nhánh',
   `CategoryID` bigint(20) NOT NULL,
   `Name` varchar(255) NOT NULL,
   `Unit` varchar(50) NOT NULL DEFAULT 'Phần',
@@ -87,7 +88,9 @@ CREATE TABLE `menuitem` (
   `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`MenuItemID`),
   UNIQUE KEY `UQ_MenuItem` (`RestaurantID`,`Name`),
-  KEY `FK_MenuItem_Category` (`CategoryID`)
+  KEY `FK_MenuItem_Category` (`CategoryID`),
+  KEY `FK_MenuItem_Branch` (`BranchID`),
+  KEY `idx_menuitem_branch` (`RestaurantID`,`BranchID`,`IsActive`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `order` (
@@ -157,11 +160,15 @@ CREATE TABLE `invoiceline` (
 CREATE TABLE `promotion` (
   `PromotionID` bigint(20) NOT NULL AUTO_INCREMENT,
   `RestaurantID` bigint(20) NOT NULL,
+  `BranchID` bigint(20) DEFAULT NULL COMMENT 'NULL: KM toàn chuỗi, NOT NULL: KM riêng của chi nhánh',
   `Name` varchar(255) NOT NULL,
   `Description` varchar(500) DEFAULT NULL,
-  `ApplyLevel` ENUM('INVOICE', 'MENU_ITEM') NOT NULL DEFAULT 'INVOICE' COMMENT 'Phạm vi áp dụng',
+  `ApplyLevel` ENUM('INVOICE', 'MENU_ITEM', 'CATEGORY') NOT NULL DEFAULT 'INVOICE' COMMENT 'Phạm vi áp dụng',
   `DiscountType` varchar(20) NOT NULL,
   `DiscountValue` decimal(18,2) NOT NULL,
+  `TargetCategoryID` bigint(20) DEFAULT NULL COMMENT 'Danh mục áp dụng (ApplyLevel = CATEGORY)',
+  `MinOrderAmount` decimal(18,2) DEFAULT NULL COMMENT 'Điều kiện: tổng tạm tính hóa đơn tối thiểu',
+  `MinItemCount` int(11) DEFAULT NULL COMMENT 'Điều kiện: số lượng món tối thiểu',
   `MaxUsage` int(11) DEFAULT NULL COMMENT 'Tổng lượt dùng cho phép',
   `UsedCount` int(11) NOT NULL DEFAULT 0 COMMENT 'Số lượt đã dùng',
   `Version` int(11) NOT NULL DEFAULT 1 COMMENT 'Optimistic Locking',
@@ -171,7 +178,10 @@ CREATE TABLE `promotion` (
   `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
   `UpdatedAt` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`PromotionID`),
-  KEY `FK_Promotion_Restaurant` (`RestaurantID`)
+  KEY `FK_Promotion_Restaurant` (`RestaurantID`),
+  KEY `FK_Promotion_Branch` (`BranchID`),
+  KEY `FK_Promotion_Category` (`TargetCategoryID`),
+  KEY `idx_promotion_branch` (`RestaurantID`,`BranchID`,`IsActive`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `promotion_menuitem` (
@@ -280,7 +290,8 @@ ALTER TABLE `invoiceline`
   ADD CONSTRAINT `FK_InvoiceLine_OrderLine` FOREIGN KEY (`OrderLineID`) REFERENCES `orderline` (`OrderLineID`);
 ALTER TABLE `menuitem`
   ADD CONSTRAINT `FK_MenuItem_Category` FOREIGN KEY (`CategoryID`) REFERENCES `category` (`CategoryID`),
-  ADD CONSTRAINT `FK_MenuItem_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`);
+  ADD CONSTRAINT `FK_MenuItem_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`),
+  ADD CONSTRAINT `FK_MenuItem_Branch` FOREIGN KEY (`BranchID`) REFERENCES `branch` (`BranchID`) ON DELETE CASCADE;
 ALTER TABLE `order`
   ADD CONSTRAINT `FK_Order_Participant` FOREIGN KEY (`ParticipantID`) REFERENCES `sessionparticipant` (`ParticipantID`),
   ADD CONSTRAINT `FK_Order_Session` FOREIGN KEY (`SessionID`) REFERENCES `session` (`SessionID`),
@@ -293,7 +304,9 @@ ALTER TABLE `orderline`
 ALTER TABLE `payment`
   ADD CONSTRAINT `FK_Payment_Invoice` FOREIGN KEY (`InvoiceID`) REFERENCES `invoice` (`InvoiceID`);
 ALTER TABLE `promotion`
-  ADD CONSTRAINT `FK_Promotion_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`);
+  ADD CONSTRAINT `FK_Promotion_Restaurant` FOREIGN KEY (`RestaurantID`) REFERENCES `restaurant` (`RestaurantID`),
+  ADD CONSTRAINT `FK_Promotion_Category` FOREIGN KEY (`TargetCategoryID`) REFERENCES `category` (`CategoryID`),
+  ADD CONSTRAINT `FK_Promotion_Branch` FOREIGN KEY (`BranchID`) REFERENCES `branch` (`BranchID`) ON DELETE CASCADE;
 ALTER TABLE `promotion_menuitem`
   ADD CONSTRAINT `FK_PromoMap_Promo` FOREIGN KEY (`PromotionID`) REFERENCES `promotion` (`PromotionID`) ON DELETE CASCADE,
   ADD CONSTRAINT `FK_PromoMap_Item` FOREIGN KEY (`MenuItemID`) REFERENCES `menuitem` (`MenuItemID`) ON DELETE CASCADE;
@@ -337,11 +350,11 @@ INSERT INTO `category` (`CategoryID`, `RestaurantID`, `Name`, `Description`) VAL
 (2, 1, 'Hải sản nướng', 'Tôm, mực, hàu'),
 (3, 1, 'Nước uống', 'Nước ngọt, bia, rượu');
 
-INSERT INTO `menuitem` (`MenuItemID`, `RestaurantID`, `CategoryID`, `Name`, `Unit`, `Description`, `BasePrice`, `url_Image`, `IsActive`, `IsWeightBased`) VALUES
-(1, 1, 1, 'Bò Tảng Mỹ nướng đá', 'Phần', 'Bò tảng nhập khẩu', 250000.00, NULL, 1, 0),
-(2, 1, 1, 'Ba chỉ heo cuộn nấm', 'Phần', 'Heo tươi', 120000.00, NULL, 1, 0),
-(3, 1, 2, 'Mực lá khổng lồ', 'Kg', 'Bán theo cân lượng', 450000.00, NULL, 1, 1),
-(4, 1, 3, 'Coca Cola', 'Lon', 'Nước ngọt', 25000.00, NULL, 1, 0);
+INSERT INTO `menuitem` (`MenuItemID`, `RestaurantID`, `BranchID`, `CategoryID`, `Name`, `Unit`, `Description`, `BasePrice`, `url_Image`, `IsActive`, `IsWeightBased`) VALUES
+(1, 1, NULL, 1, 'Bò Tảng Mỹ nướng đá', 'Phần', 'Bò tảng nhập khẩu', 250000.00, NULL, 1, 0),
+(2, 1, NULL, 1, 'Ba chỉ heo cuộn nấm', 'Phần', 'Heo tươi', 120000.00, NULL, 1, 0),
+(3, 1, NULL, 2, 'Mực lá khổng lồ', 'Kg', 'Bán theo cân lượng', 450000.00, NULL, 1, 1),
+(4, 1, NULL, 3, 'Coca Cola', 'Lon', 'Nước ngọt', 25000.00, NULL, 1, 0);
 
 INSERT INTO `area` (`AreaID`, `BranchID`, `Name`, `IsActive`) VALUES
 (1, 1, 'Tầng Trệt - Sảnh', 1),
@@ -354,5 +367,5 @@ INSERT INTO `table` (`TableID`, `AreaID`, `Name`, `QRCode`, `IsActive`) VALUES
 (3, 2, 'Bàn VIP-01', 'table_qr_3', 1),
 (4, 3, 'Bàn V-01', 'table_qr_4', 1);
 
-INSERT INTO `promotion` (`PromotionID`, `RestaurantID`, `Name`, `Description`, `ApplyLevel`, `DiscountType`, `DiscountValue`, `StartDate`, `EndDate`, `IsActive`) VALUES
-(1, 1, 'Khai trương giảm 10%', 'Giảm trực tiếp 10% tổng bill', 'INVOICE', 'PERCENT', 10.00, '2020-01-01 00:00:00', '2030-12-31 23:59:59', 1);
+INSERT INTO `promotion` (`PromotionID`, `RestaurantID`, `BranchID`, `Name`, `Description`, `ApplyLevel`, `DiscountType`, `DiscountValue`, `StartDate`, `EndDate`, `IsActive`) VALUES
+(1, 1, NULL, 'Khai trương giảm 10%', 'Giảm trực tiếp 10% tổng bill', 'INVOICE', 'PERCENT', 10.00, '2020-01-01 00:00:00', '2030-12-31 23:59:59', 1);
